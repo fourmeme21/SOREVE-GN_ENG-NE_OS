@@ -1,0 +1,387 @@
+
+
+> **Tek operatörlü, yüksek kontrol disiplinli, düşük friksiyonlu kişisel AI yazılım sistemi**
+
+demek.
+
+Buna göre sana **gerçekçi, sadeleştirilmiş, çalışabilir v3.0 teknik raporu** yazıyorum. Süs yok, direkt uygulanabilir.
+
+---
+
+# ⚙️ SOVEREIGN ENGINE OS v3.0 — SOLO OPERATOR TEKNİK RAPOR
+
+## 0. TASARIM İLKESİ (REVİZE)
+
+> **Amaç:** Maksimum kontrol + minimum zihinsel yük
+
+Bu yüzden:
+
+* ❌ Enterprise complexity yok
+
+* ❌ Gereksiz katman yok
+
+* ❌ Aşırı policy yok
+
+* ✅ Hızlı karar döngüsü
+
+* ✅ Basit ama güvenli execution
+
+* ✅ Geri alınabilirlik (rollback) garanti
+
+---
+
+# 🧠 1. SİSTEMİN GERÇEK ÇEKİRDEĞİ
+
+Senin sistemin aslında 3 şeyden oluşuyor:
+
+```
+1. AI → önerir
+2. File-system → gerçekliktir
+3. Sen → karar verirsin
+```
+
+Ama solo kullanımda kritik değişiklik:
+
+> **Sen bottleneck’sin → sistem seni yormamalı**
+
+---
+
+# 🧱 2. REVİZE MİMARİ (8 → 5 KATMAN)
+
+Orijinal 8 katman fazla. Bunu 5’e indiriyoruz:
+
+| KATMAN | AD             | NE YAPAR                   |
+| ------ | -------------- | -------------------------- |
+| K1     | AI Layer       | Kod/patch önerir           |
+| K2     | Decision       | intent + risk_level        |
+| K3     | Validation     | pre-flight + basic checks  |
+| K4     | Execution Gate | dry-run + patch + rollback |
+| K5     | Memory         | session + log              |
+
+❌ Kaldırılanlar:
+
+* ayrı Policy Kernel (hafifletildi)
+* karmaşık Autonomy Dial
+* ağır izolasyon katmanları
+
+---
+
+# ⚡ 3. EN KRİTİK BİLEŞEN: BRIDGE
+
+## Seçimin doğru:
+
+> SEARCH_REPLACE tek doğru yol
+
+### Ama solo versiyon:
+
+**Kurallar:**
+
+* AI → sadece patch üretir
+* Sistem → diff gösterir
+* Sen → onaylarsın
+* Sistem → uygular
+
+---
+
+## PATCH FORMAT (standart)
+
+```json
+{
+  "file": "src/user.ts",
+  "operations": [
+    {
+      "search": "old code",
+      "replace": "new code"
+    }
+  ]
+}
+```
+
+---
+
+## EXECUTION FLOW
+
+```
+AI → patch üretir
+→ dry-run (zorunlu)
+→ diff gösterilir
+→ sen onaylarsın
+→ apply
+→ hata → rollback
+```
+
+---
+
+# 🔐 4. GÜVENLİK (SIMPLE AMA ETKİLİ)
+
+Solo olduğun için:
+
+## Gerekli:
+
+* ✅ fail-closed
+* ✅ rollback
+* ✅ idempotency
+* ✅ audit log
+
+## Gereksiz:
+
+* ❌ TPM
+* ❌ WASM sandbox (şimdilik)
+* ❌ distributed auth
+
+---
+
+# 🧠 5. EN KRİTİK KONU: SESSION VE MEMORY
+
+Şimdi senin sorduğun asıl meseleye geliyoruz:
+
+> **Session büyüyecek — nerede saklanacak?**
+
+Bu sistemin en önemli kısmı burası.
+
+---
+
+## ❗ TEK DOĞRU YAKLAŞIM: FILE-SYSTEM + KATMANLI HAFIZA
+
+Database kullanma. Supabase vs kullanma.
+
+Sebep:
+
+* debug zorlaşır
+* kontrol kaybolur
+* felsefe kırılır
+
+---
+
+# 🧊 5.1 3 KATMANLI HAFIZA
+
+## 🔥 HOT (aktif)
+
+```
+/memory/hot/
+```
+
+İçerik:
+
+* son 5–10 session
+* aktif context
+
+Format:
+
+```json
+session-126.json
+```
+
+---
+
+## 🌤️ WARM (yakın geçmiş)
+
+```
+/memory/warm/
+```
+
+İçerik:
+
+* son 50–100 session
+
+Sıkıştırılmış + özetlenmiş
+
+---
+
+## ❄️ COLD (arşiv)
+
+```
+/memory/cold/
+```
+
+İçerik:
+
+* eski sessionlar
+* sadece referans
+
+---
+
+# 🔄 5.2 OTOMATİK ARŞİVLEME
+
+## Kural:
+
+```
+HOT > 10 session → oldest → WARM
+WARM > 100 session → oldest → COLD
+```
+
+---
+
+# 🧠 5.3 SESSION FORMAT (KRİTİK)
+
+```json
+{
+  "session_id": 126,
+  "timestamp": "2026-05-01",
+  "intent": "update user auth",
+  "risk_level": "medium",
+  "actions": [
+    {
+      "type": "patch",
+      "file": "auth.ts",
+      "status": "applied"
+    }
+  ],
+  "result": "success",
+  "notes": "minor bug fixed"
+}
+```
+
+---
+
+# ⚡ 5.4 ÖZET DOSYASI (AI İÇİN)
+
+Her 10 session’da bir:
+
+```
+/memory/summary.json
+```
+
+```json
+{
+  "last_10_sessions": "...",
+  "current_focus": "auth system",
+  "known_issues": ["token bug"]
+}
+```
+
+👉 AI sadece bunu + HOT okur
+
+---
+
+# 🚨 6. EN KRİTİK RİSK VE ÇÖZÜM
+
+## Problem:
+
+Session büyüdükçe:
+
+* AI context taşar
+* sen kaybolursun
+
+---
+
+## Çözüm:
+
+### Kural 1:
+
+> AI ASLA full history okumaz
+
+### Kural 2:
+
+> Sadece:
+
+* summary
+* hot sessions
+
+---
+
+### Kural 3:
+
+> Sen gerektiğinde:
+
+* cold’dan manuel çağırırsın
+
+---
+
+# 🧩 7. MODULE SYSTEM (SENİN DURUMUNDA)
+
+Kullan ama sade:
+
+## Limit:
+
+> max 5 aktif modül
+
+---
+
+## Basit yapı:
+
+```json
+{
+  "active_module": "auth",
+  "modules": {
+    "auth": {
+      "status": "IN_PROGRESS",
+      "files": ["src/auth/"]
+    }
+  }
+}
+```
+
+---
+
+❗ Fazla karmaşık yaparsan:
+
+* seni yorar
+* hız düşer
+
+---
+
+# ⚡ 8. SPRINT GERÇEKLİĞİ (REVİZE)
+
+Senin için 3 sprint değil.
+
+## Gerçek plan:
+
+### 🔥 Gün 1–2
+
+* Bridge (SEARCH_REPLACE)
+* basic execution
+* rollback
+
+### 🔥 Gün 3
+
+* memory sistemi
+* session logging
+
+### 🔥 Gün 4
+
+* onboarding (kendin için)
+* first working flow
+
+---
+
+# 🧠 9. EN KRİTİK KURAL (UNUTMA)
+
+> **Sistem seni hızlandırmalı, seni yönetmemeli**
+
+Eğer:
+
+* çok fazla kural koyarsan
+* çok fazla katman eklersen
+
+→ sistem değil, bürokrasi olur
+
+---
+
+# 🎯 SONUÇ
+
+## Bu sistem doğru yapılırsa:
+
+* kendi AI dev environment’ına sahip olursun
+* kod üretimi hızlanır
+* hata riski düşer
+
+---
+
+## Ama şu olursa çöker:
+
+* aşırı komplekslik
+* fazla modül
+* kötü memory yönetimi
+
+---
+
+# 👉 SONRAKİ ADIM
+
+İstersen sana şu 3 şeyi çıkarabilirim:
+
+1. **Klasör yapısı (direkt kullanacağın)**
+2. **İlk çalışan CLI (`sovereign-core`)**
+3. **Patch engine kodu (çalışır halde)**
+
+Hangisiyle başlıyoruz?
