@@ -1,0 +1,354 @@
+Tamam. Sana doğrudan kullanılabilir, gereksiz teori içermeyen, **tek başına sistemi ayağa kaldıracak Execution Spec** hazırlıyorum.
+
+---
+
+# ⚙️ SOVEREIGN ENGINE OS v3.0
+
+## **EXECUTION SPEC — SOLO OPERATOR**
+
+> Bu belge kod yazarken referans alınır.
+> Amaç: **AI → güvenli değişiklik → geri alınabilir sistem**
+
+---
+
+# 🧭 0. SİSTEM AMACI
+
+```text
+AI önerir → Sistem kontrol eder → Sen onaylarsın → Sistem uygular → Loglanır
+```
+
+---
+
+# 🚪 1. SYSTEM ENTRYPOINT
+
+## Komut
+
+```bash
+node sovereign apply patch.json
+```
+
+---
+
+## Akış (zorunlu sıra)
+
+```text
+1. patch.json yükle
+2. validate (schema)
+3. dry-run (dosyaya dokunmadan)
+4. diff üret
+5. kullanıcıya göster
+6. onay al (y/n)
+7. apply
+8. logla (session)
+9. hata varsa → rollback
+```
+
+---
+
+# 📦 2. AI CONTRACT (ZORUNLU)
+
+## Kabul edilen TEK format
+
+```json
+{
+  "intent": "string",
+  "risk_level": "low | medium | high",
+  "patch": {
+    "file": "string",
+    "operations": [
+      {
+        "search": "string",
+        "replace": "string"
+      }
+    ]
+  },
+  "confidence": "number (0-1)"
+}
+```
+
+---
+
+## Kurallar
+
+* eksik alan → ❌ REJECT
+* boş operations → ❌ REJECT
+* search bulunamaz → ❌ REJECT
+
+---
+
+# 🔍 3. VALIDATION LAYER
+
+## Fonksiyon
+
+```js
+function validate(input) {
+  if (!input.intent) throw "INVALID_INTENT"
+  if (!input.risk_level) throw "NO_RISK"
+  if (!input.patch) throw "NO_PATCH"
+  if (!input.patch.file) throw "NO_FILE"
+  if (!input.patch.operations.length) throw "EMPTY_PATCH"
+}
+```
+
+---
+
+# 🔧 4. BRIDGE SPEC (CORE)
+
+## 4.1 applyPatch (dry-run)
+
+```js
+function applyPatch(original, operations) {
+  let updated = original
+
+  for (const op of operations) {
+    if (!updated.includes(op.search)) {
+      throw "SEARCH_NOT_FOUND"
+    }
+    updated = updated.replace(op.search, op.replace)
+  }
+
+  return updated
+}
+```
+
+---
+
+## 4.2 Diff üretimi
+
+```js
+function generateDiff(before, after) {
+  return {
+    before,
+    after
+  }
+}
+```
+
+---
+
+## 4.3 Apply (gerçek yazma)
+
+```js
+writeFile(file, updated)
+```
+
+---
+
+## 4.4 Rollback
+
+```js
+writeFile(file, original)
+```
+
+---
+
+# ⚙️ 5. EXECUTION GATE
+
+## Akış
+
+```js
+original = readFile(file)
+
+updated = applyPatch(original, ops)   // dry-run
+
+diff = generateDiff(original, updated)
+
+print(diff)
+
+if (user !== "y") exit()
+
+try {
+  writeFile(file, updated)
+} catch (e) {
+  writeFile(file, original)
+  throw "ROLLBACK_DONE"
+}
+```
+
+---
+
+# 💾 6. MEMORY SİSTEMİ
+
+## Klasör yapısı
+
+```
+/memory/
+  /hot/
+  /warm/
+  /cold/
+```
+
+---
+
+## Kurallar
+
+```text
+HOT max: 10 session
+WARM max: 100 session
+overflow → eskiyi taşı
+```
+
+---
+
+## Taşıma
+
+```js
+if (hot.length > 10) moveToWarm(oldest)
+if (warm.length > 100) moveToCold(oldest)
+```
+
+---
+
+# 🧾 7. SESSION FORMAT
+
+```json
+{
+  "id": 1,
+  "timestamp": "ISO",
+  "intent": "string",
+  "risk_level": "string",
+  "file": "string",
+  "result": "success | fail",
+  "error": "optional"
+}
+```
+
+---
+
+## Kaydetme
+
+```js
+save("/memory/hot/session-1.json")
+```
+
+---
+
+# 🧠 8. AI INPUT STRATEJİSİ
+
+AI’ya ASLA full memory verme.
+
+## Sadece:
+
+* last summary
+* hot sessions
+
+---
+
+## summary.json
+
+```json
+{
+  "current_focus": "string",
+  "known_issues": [],
+  "last_actions": []
+}
+```
+
+---
+
+# 🖥️ 9. CLI OUTPUT STANDARDI
+
+```text
+[PATCH PREVIEW]
+
+File: src/app.ts
+Intent: update_auth
+Risk: MEDIUM
+Confidence: 0.82
+
+--- BEFORE
+old code
+
++++ AFTER
+new code
+
+----------------------
+
+Apply? (y/n)
+```
+
+---
+
+# 🚨 10. ERROR HANDLING
+
+| HATA             | DAVRANIŞ    |
+| ---------------- | ----------- |
+| INVALID_SCHEMA   | işlem iptal |
+| SEARCH_NOT_FOUND | işlem iptal |
+| WRITE_FAIL       | rollback    |
+| UNKNOWN          | rollback    |
+
+---
+
+# 🔒 11. SİSTEM KURALLARI (DEĞİŞMEZ)
+
+```text
+1. AI asla doğrudan dosya yazamaz
+2. Her değişiklik dry-run'dan geçer
+3. Kullanıcı onayı olmadan apply yok
+4. Her işlem loglanır
+5. Hata → rollback zorunlu
+```
+
+---
+
+# ❌ 12. BU VERSİYONDA YOK
+
+```text
+- Dashboard
+- Policy engine (advanced)
+- Multi-agent
+- Module system (full)
+- WASM sandbox
+```
+
+---
+
+# ✅ 13. BAŞARI KRİTERİ
+
+Sistem başarılıdır eğer:
+
+```text
+AI → patch üretir
+→ sen onaylarsın
+→ kod değişir
+→ hata olursa geri alınır
+→ session log oluşur
+```
+
+---
+
+# 🚀 14. İLK TEST SENARYOSU
+
+1. Basit bir dosya oluştur
+2. AI patch üret
+3. apply et
+4. yanlış patch ver → hata al
+5. rollback çalışıyor mu kontrol et
+
+---
+
+# 🎯 SON SÖZ
+
+Bu belge:
+
+> **Minimum ama tam çalışan sistemdir**
+
+Bunu kurduğunda:
+
+* sistem ayağa kalkar
+* sonra katman eklenir
+
+---
+
+# 👉 SONRAKİ ADIM
+
+İstersen bir sonraki seviyede sana:
+
+* hazır **proje klasör yapısı**
+* çalışan **CLI kodu**
+* örnek **patch generator promptu**
+
+verebilirim.
+
+Direkt çalıştırmalık ister misin?
