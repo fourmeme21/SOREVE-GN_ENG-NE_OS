@@ -1,0 +1,1758 @@
+# SOVEREIGN ENGINE OS — v3.0
+## Evrensel AI Yazılım Üretim İşletim Sistemi
+
+> *"Bu sistem herhangi bir uygulamayı bilmez.*
+> *Sadece kararların nasıl üretileceğini, doğrulanacağını ve yürütüleceğini bilir."*
+
+**Sürüm:** 3.0 — Sıfırdan, domain-agnostik  
+**Çekirdek Dil:** Rust (binary dağıtım)  
+**Adaptör Dili:** TypeScript / Python (kullanıcı yazar)  
+**Kalibrasyon:** 1 kanıtlanmış üretim projesi, 125 session, 30+ özellik
+
+---
+
+## OKUMA HARİTASI
+
+```
+Sistemi ilk kez anlıyorum        → Bölüm 1 + 2
+Kod yazmaya başlamak istiyorum   → Bölüm 3 + 4 + 5
+Kendi projem için uyarlamak      → Bölüm 6 + 7
+Tahmin çıkarmak istiyorum        → Bölüm 8
+Rust çekirdeğini anlamak         → Bölüm 9
+Arayüzü görmek istiyorum         → Bölüm 10
+```
+
+---
+
+# KISIM I — TEMEL
+
+---
+
+## BÖLÜM 1 — FELSEFİ ÇERÇEVE
+
+### 1.1 Sistemin Çözdüğü Problem
+
+Bir AI ajanı kod önerir. Bu öneri sistemin durumunu değiştirmeden önce şu soruların yanıtlanması gerekir:
+
+```
+KİM  önerdi?       → Kimlik ve yetki
+NE   önerdı?       → Niyetin anlaşılması
+GEÇERLİ Mİ?       → Şema, tip, bağlam
+İZİN VAR MI?       → Politika ve kural
+DAHA ÖNCE OLDU MU? → Mükerrer işlem engeli
+NE OLDU?           → Değiştirilemez kayıt
+```
+
+Geleneksel sistemlerde bu sorular geliştiricinin kafasındadır. Her projede yeniden çözülür, çoğu zaman eksik çözülür. Sovereign Engine bu sorulara **sistematik ve taşınabilir** bir yanıt üretir.
+
+### 1.2 Temel Prensip
+
+```
+AI          →  Karar önerir
+Sistem      →  Kararın yaşayıp yaşamayacağına karar verir
+Adaptör     →  Onaylanan kararı gerçek sisteme taşır
+```
+
+Bu üçlü ayrım sistemin çözünemez çekirdeğidir. Bozulursa sistem bozulur.
+
+### 1.3 Ne Değildir
+
+| Kavram | Açıklama |
+|--------|----------|
+| Framework değil | Framework kod yazma kuralıdır. Bu sistem kararları denetler. |
+| Boilerplate değil | Boilerplate başlangıç noktasıdır. Bu sistem tüm yaşam döngüsünü yönetir. |
+| AI assistant değil | Assistant önerir. Bu sistem onaylar, reddeder, yönlendirir. |
+| Proje yönetim aracı değil | Jira görev takip eder. Bu sistem kararları imzalı kayıt olarak saklar. |
+
+### 1.4 Hangi Projelerde Kullanılır
+
+**Kullanılmalı (20+ session projeler):**
+- Finansal işlem içeren her uygulama
+- Hiyerarşik yetki gerektiren sistemler
+- Denetlenebilirlik (audit) zorunluluğu olan uygulamalar
+- Birden fazla kullanıcı rolü içeren platformlar
+- Uzun vadeli, büyüyen sistemler
+
+**Kullanılmamalı (< 20 session projeler):**
+- Tek seferlik prototipler
+- Statik web siteleri
+- Basit CRUD uygulamaları
+- Script/otomasyon araçları
+
+> **Eşik kuralı:** Proje 20 session'ı aşacaksa Sovereign Engine kazandırır. Altında overkill.
+
+---
+
+## BÖLÜM 2 — MİMARİ
+
+### 2.1 Beş Katmanlı Governance Akışı
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KATMAN 0 — AI AJAN
+  (Herhangi bir model: Claude, GPT, Gemini, Llama)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Doğal dil çıktısı / Kod önerisi
+  ↓
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KATMAN 1 — DECISION ENGINE          [TypeScript]
+  Doğal dil → Standart Decision nesnesi
+  "Ne yapmak istediğini anlıyorum"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓ PASS / REJECTED
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KATMAN 2 — VALIDATION ENGINE        [TypeScript]
+  Şema + iş kuralı + bağlam doğrulama
+  Pre-flight Read (bayat veri koruması)
+  "Söylediğin geçerli mi kontrol ediyorum"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓ ALLOW / DENY / ASK_HUMAN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KATMAN 3 — POLICY KERNEL               [RUST]
+  Kural seti değerlendirme
+  Yetki, limit, durum, hiyerarşi kontrolleri
+  "Yapma izni var mı karar veriyorum"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓ PERMIT / BLOCK
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KATMAN 4 — EXECUTION GATE              [RUST]
+  Idempotency, fail-closed, imzalı log
+  "Onaylandı. Bir kez ve güvenli şekilde çalıştırıyorum"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  KATMAN 5 — DOMAIN ADAPTER          [TypeScript]
+  Soyut karar → Gerçek sistem çağrısı
+  "Nereye gideceğini ben biliyorum"
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ↓
+  [Gerçek Sistem: Herhangi bir DB, API, servis]
+```
+
+### 2.2 Katman Sorumlulukları — Tek Cümle
+
+| Katman | Soru | Kimin Yazdığı |
+|--------|------|---------------|
+| Decision Engine | "AI ne istiyor?" | Kullanıcı |
+| Validation Engine | "Geçerli mi?" | Kullanıcı |
+| Policy Kernel | "İzin var mı?" | Rust Core (sahip günceller) |
+| Execution Gate | "Güvenli mi?" | Rust Core (sahip günceller) |
+| Domain Adapter | "Nereye gider?" | Kullanıcı |
+
+### 2.3 Değişmeyen ve Değişen Parçalar
+
+```
+DEĞİŞMEZ (Her projede aynı):          DEĞİŞİR (Her projede farklı):
+━━━━━━━━━━━━━━━━━━━━━━━━━━            ━━━━━━━━━━━━━━━━━━━━━━━━━━
+Decision nesne şeması                  Domain kategori isimleri
+Intent türleri (5 adet)                Action isimleri
+Politika değerlendirme sırası          Rol hiyerarşisi
+Fail-closed prensibi                   Kilitli durum listesi
+Hash chain log yapısı                  Pre-flight kontrol alanları
+Self-check protokolü                   Domain adapter implementasyonu
+Session disiplini                      Soft steer mesajları
+```
+
+### 2.4 Proje Dosya Yapısı
+
+```
+/[proje]-os/
+  ├── SOVEREIGN_ENGINE_OS.md   ← Bu dosya
+  ├── CORE.md                  ← Proje kimliği, AI sınırları
+  ├── AI_AGENT.md              ← AI çalışma disiplini
+  ├── session_index.md         ← Anlık durum (her session başında okunur)
+  ├── session_log_hot.md       ← Son 5 session (her session başında okunur)
+  ├── session_log_warm/        ← Eski sessionlar (talep üzerine)
+  ├── session_log_cold.md      ← Tüm geçmişin özeti (50 sessionda bir)
+  ├── ARCHITECTURE.md          ← Veri modeli + servis kontratları
+  ├── failure_patterns.md      ← Hata kütüphanesi
+  ├── test_matrix.md           ← Test senaryoları
+  ├── DEPENDENCIES.md          ← Yan etki haritası
+  ├── ROADMAP.md               ← Ürün yol haritası
+  └── MIGRATIONS/              ← Veri modeli değişiklikleri
+
+/sovereign-core/               ← RUST binary (kaynak paylaşılmaz)
+  ├── sovereign-core[.exe/.bin]
+  ├── sovereign-core.wasm
+  └── LICENSE.sig
+
+/domain/[proje]/               ← KULLANICI YAZDIĞI TEK KATMAN
+  ├── adapter.ts
+  ├── policies.ts
+  └── categories.ts
+
+/ui/                           ← KONTROL ARAYÜZİ
+```
+
+---
+
+# KISIM II — KOD ALTYAPISI
+
+---
+
+## BÖLÜM 3 — DECISION ENGINE
+
+### 3.1 Evrensel Karar Nesnesi
+
+Bu şema hiçbir domain bilgisi içermez. `category` ve `action_name` alanları domain-spesifiktir — sadece onlar değişir.
+
+```typescript
+// core/types/decision.ts
+
+// Sistem genelinde sabit — değiştirilemez
+type Intent =
+  | "READ_DATA"       // Veri okuma          — düşük risk
+  | "WRITE_DATA"      // Kayıt oluşturma     — orta risk
+  | "EXECUTE_ACTION"  // İş akışı tetikleme  — yüksek risk
+  | "TRIGGER_EVENT"   // Olay/bildirim       — orta risk
+  | "MODIFY_STATE";   // Durum/config değişimi — kritik
+
+type RiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+type Confidence = "HIGH" | "MEDIUM" | "LOW";
+
+interface Decision {
+  // — Kimlik —
+  id: string;               // UUID v7 (zaman sıralı)
+  created_at: string;       // ISO 8601
+
+  // — Niyet —
+  intent: Intent;
+  category: string;         // Domain tanımlar: "FINANCIAL" | "INVENTORY" | "USER" | ...
+
+  // — Eylem —
+  payload: {
+    action_name: string;    // Domain tanımlar: "create_order" | "assign_doctor" | ...
+    params: Record<string, unknown>;
+    assumed_state?: Record<string, unknown>; // AI'nın varsaydığı mevcut durum
+  };
+
+  // — Bağlam —
+  context: {
+    actor_id: string;       // İşlemi yapan kullanıcı/sistem
+    actor_role: string;     // Domain tanımlar: "admin" | "manager" | "member" | ...
+    session_id: string;
+    risk_level: RiskLevel;
+    hierarchy_path?: string[]; // ["root", "parent", "child"] — opsiyonel
+  };
+
+  // — Üretim metaverisi —
+  metadata: {
+    model: string;
+    session_number: number;
+    confidence: Confidence;
+    self_check_passed: boolean;
+    token_budget_spent?: number;
+  };
+
+  // — Runtime durumu (sistem doldurur) —
+  status:
+    | "PENDING"
+    | "VALIDATED"
+    | "POLICY_APPROVED"
+    | "EXECUTING"
+    | "COMPLETED"
+    | "REJECTED"
+    | "BLOCKED";
+  audit_hash?: string;
+}
+```
+
+### 3.2 Intent × Risk Matrisi
+
+| Intent | Risk | Zorunlu Kontroller | Örnek Eylemler |
+|--------|------|-------------------|----------------|
+| `READ_DATA` | Düşük | Erişim yetkisi, PII maskeleme | Rapor görüntüleme, profil okuma |
+| `WRITE_DATA` | Orta | Şema, çakışma kontrolü | Kayıt oluşturma, güncelleme |
+| `EXECUTE_ACTION` | Yüksek | Politika + idempotency | Sipariş oluşturma, ödeme, randevu |
+| `TRIGGER_EVENT` | Orta | Rate limiting | Bildirim, webhook, kuyruk |
+| `MODIFY_STATE` | Kritik | Statik analiz, geri dönüş | Config değişikliği, toplu işlem |
+
+### 3.3 AI Karar Bildirimi Formatı
+
+AI her öneri öncesinde bu formatı üretir. The Bridge bu format olmadan işlem yapmaz.
+
+```
+[KARAR BİLDİRİMİ]
+intent:          EXECUTE_ACTION
+category:        [domain kategorisi]
+action:          [eylem adı]
+risk:            HIGH
+actor_role:      [rol adı]
+touches_critical_data: true/false
+idempotency_required:  true/false
+self_check_passed:     true
+confidence:      HIGH
+```
+
+---
+
+## BÖLÜM 4 — VALIDATION ENGINE
+
+### 4.1 Üç Aşamalı Protokol
+
+**Aşama 1 — Şema Doğrulama**
+
+```typescript
+// core/validation/schema.ts
+import { z } from "zod";
+
+export const DecisionSchema = z.object({
+  id: z.string().uuid(),
+  created_at: z.string().datetime(),
+  intent: z.enum(["READ_DATA", "WRITE_DATA", "EXECUTE_ACTION", "TRIGGER_EVENT", "MODIFY_STATE"]),
+  category: z.string().min(1).max(50).regex(/^[A-Z_]+$/, "Büyük harf ve alt çizgi"),
+  payload: z.object({
+    action_name: z.string().min(1).regex(/^[a-z_]+$/, "Küçük harf ve alt çizgi"),
+    params: z.record(z.unknown()),
+    assumed_state: z.record(z.unknown()).optional()
+  }),
+  context: z.object({
+    actor_id: z.string().min(1),
+    actor_role: z.string().min(1),
+    session_id: z.string().min(1),
+    risk_level: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"])
+  }),
+  metadata: z.object({
+    model: z.string().min(1),
+    session_number: z.number().int().positive(),
+    confidence: z.enum(["HIGH", "MEDIUM", "LOW"]),
+    self_check_passed: z.boolean()
+  })
+});
+
+export type ValidationResult =
+  | { status: "PASS"; data: Decision }
+  | { status: "REJECTED"; reason: string };
+
+export function validateSchema(raw: unknown): ValidationResult {
+  const result = DecisionSchema.safeParse(raw);
+  if (!result.success) {
+    return {
+      status: "REJECTED",
+      reason: result.error.issues
+        .map(i => `[${i.path.join(".")}] ${i.message}`)
+        .join(" | ")
+    };
+  }
+  // HIGH confidence ile self_check_passed=false olamaz
+  if (result.data.metadata.confidence === "HIGH" &&
+      !result.data.metadata.self_check_passed) {
+    return {
+      status: "REJECTED",
+      reason: "HIGH confidence beyan edilmiş ama self_check_passed=false. Çelişki."
+    };
+  }
+  return { status: "PASS", data: result.data as Decision };
+}
+```
+
+**Aşama 2 — İş Kuralları Doğrulama**
+
+Bu katman domain-bağımsız evrensel kuralları kontrol eder. Domain-spesifik kurallar Policy Engine'e aittir.
+
+```typescript
+// core/validation/business.ts
+
+export function validateBusinessRules(decision: Decision): ValidationResult {
+  const errors: string[] = [];
+
+  // Kural 1: MODIFY_STATE her zaman CRITICAL olmalı
+  if (decision.intent === "MODIFY_STATE" &&
+      decision.context.risk_level !== "CRITICAL") {
+    errors.push("MODIFY_STATE intent için risk_level CRITICAL olmalıdır");
+  }
+
+  // Kural 2: CRITICAL risk → confidence HIGH olamaz (insan kontrolü gerekir)
+  if (decision.context.risk_level === "CRITICAL" &&
+      decision.metadata.confidence === "HIGH") {
+    errors.push("CRITICAL risk seviyesinde AI HIGH confidence beyan edemez");
+  }
+
+  // Kural 3: assumed_state varsa EXECUTE_ACTION olmalı
+  if (decision.payload.assumed_state &&
+      !["EXECUTE_ACTION", "MODIFY_STATE"].includes(decision.intent)) {
+    errors.push("assumed_state yalnızca EXECUTE_ACTION veya MODIFY_STATE ile kullanılabilir");
+  }
+
+  return errors.length > 0
+    ? { status: "REJECTED", reason: errors.join(" | ") }
+    : { status: "PASS", data: decision };
+}
+```
+
+**Aşama 3 — Pre-flight Read (Bayat Veri Koruması)**
+
+Bu en kritik aşama. AI karar verirken sahip olduğu veri ile sistemdeki gerçek veri arasındaki farkı tespit eder.
+
+```typescript
+// core/validation/preflight.ts
+
+export interface PreFlightResult {
+  clear: boolean;
+  reason?: "RE_EVALUATE" | "ENTITY_INACTIVE" | "STATE_CHANGED";
+  stale_fields?: string[];
+  current_snapshot?: Record<string, unknown>;
+}
+
+// Bu fonksiyon domain adaptörü tarafından implemente edilir
+// Core sadece arayüzü tanımlar
+export interface PreFlightReader {
+  read(decision: Decision): Promise<PreFlightResult>;
+}
+
+// Varsayılan: assumed_state yoksa geç
+export class DefaultPreFlightReader implements PreFlightReader {
+  async read(decision: Decision): Promise<PreFlightResult> {
+    if (!decision.payload.assumed_state) return { clear: true };
+    // assumed_state varsa domain adaptörü override etmeli
+    return { clear: true };
+  }
+}
+```
+
+**Domain adaptörü pre-flight implementasyonu (örnek kalıp):**
+
+```typescript
+// domain/[proje]/preflight.ts
+// Kullanıcı kendi veri kaynağına göre bunu implement eder
+
+export class ProjectPreFlightReader implements PreFlightReader {
+  constructor(private db: DatabaseClient) {}
+
+  async read(decision: Decision): Promise<PreFlightResult> {
+    if (!decision.payload.assumed_state) return { clear: true };
+
+    // Hangi entity'yi kontrol edeceğini category'den anlar
+    const entityId = decision.context.actor_id;
+    const category = decision.category;
+
+    // Domain'e özgü fresh state okuma
+    const freshState = await this.db
+      .table(this.categoryToTable(category))
+      .where({ id: entityId })
+      .first();
+
+    if (!freshState) return { clear: false, reason: "ENTITY_INACTIVE" };
+
+    // Kritik alanları karşılaştır
+    const staleDiff = this.detectStaleness(
+      decision.payload.assumed_state,
+      freshState
+    );
+
+    if (staleDiff.length > 0) {
+      return {
+        clear: false,
+        reason: "RE_EVALUATE",
+        stale_fields: staleDiff,
+        current_snapshot: freshState
+      };
+    }
+
+    return { clear: true };
+  }
+
+  private detectStaleness(
+    assumed: Record<string, unknown>,
+    fresh: Record<string, unknown>
+  ): string[] {
+    return Object.keys(assumed).filter(key => {
+      if (typeof assumed[key] === "number" && typeof fresh[key] === "number") {
+        return Math.abs((assumed[key] as number) - (fresh[key] as number)) > 0.001;
+      }
+      return assumed[key] !== fresh[key];
+    });
+  }
+
+  private categoryToTable(category: string): string {
+    // Domain mapping: kullanıcı tanımlar
+    throw new Error(`categoryToTable not implemented for: ${category}`);
+  }
+}
+```
+
+### 4.2 Evrensel Self-Check Protokolü
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PRE-EXECUTION SELF-CHECK
+Her kod önerisinden önce çalıştırılır. Atlanamaz.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VERİ KATMANI:
+[ ] Bu işlem kritik veriyi değiştiriyor mu?
+    → EVET: intent=EXECUTE_ACTION, idempotency zorunlu
+
+[ ] Aynı işlem eş zamanlı iki kez gelebilir mi?
+    → EVET: Kilitleme mekanizması gerekli
+
+[ ] Aynı istek tekrar gönderilebilir mi? (retry/timeout)
+    → EVET: Idempotency key zorunlu
+
+YETKİ KATMANI:
+[ ] Yetki kontrolü yapılıyor mu?
+    → HAYIR: Yetki kontrolü eklenmeden onay verilmez
+
+[ ] Değiştirilemez durumda olan bir kayda mı dokunuluyor?
+    → EVET: IMMUTABLE_STATE — kesinlikle engelle
+
+[ ] Veri dışarıya sızabilir mi? (PII, hassas veri)
+    → EVET: Çıkış filtresi ekle, READ_DATA için maskeleme
+
+GÜVENLİK KATMANI:
+[ ] İşlem kaynağı doğrulandı mı? (client-direct riski)
+    → HAYIR: Server-side doğrulama ekle
+
+[ ] Bu değişikliğin yan etkileri haritalanadı mı?
+    → HAYIR: DEPENDENCIES.md kontrol et
+
+BAĞLAM KATMANI:
+[ ] Gerekli tüm dosyalar sağlandı mı?
+    → HAYIR: HIGH confidence yasak — önce dosyaları iste
+
+[ ] DB/şema değişikliği var mı?
+    → EVET: Migration dosyası + ARCHITECTURE.md güncellemesi zorunlu
+
+[ ] Bu özellik için test senaryosu tanımlandı mı?
+    → HAYIR: test_matrix.md'ye ekle, yoksa deploy yapma
+
+SONUÇ:
+  Tümü temiz    → confidence: HIGH
+  1 belirsizlik → confidence: MEDIUM + gerekçe
+  Eksik context → confidence: LOW + eksik dosyaları listele
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+---
+
+## BÖLÜM 5 — POLICY ENGINE
+
+### 5.1 Politika Mimarisi
+
+Policy Engine iki katmandan oluşur:
+
+```
+HARD LOCKS  [Rust Core — değiştirilemez]
+    │ Matematiksel güvenlik garantileri
+    │ Mutlak kimlik/yetki sınırları
+    ↓
+DOMAIN RULES  [TypeScript — kullanıcı ekler/günceller]
+    │ İş kuralları
+    │ Rol kısıtlamaları
+    │ Domain-spesifik sınırlar
+    ↓
+DEFAULT: DENY  [Her ikisi de yanıt vermezse]
+```
+
+### 5.2 Evrensel Politika Arayüzü
+
+```typescript
+// core/policy/types.ts
+
+interface PolicyResult {
+  decision: "ALLOW" | "DENY" | "ASK_HUMAN";
+  priority: 1 | 2 | 3 | 4;   // 1=mutlak, 4=tercih
+  error_code?: string;
+
+  // Soft steer: ret değil, yönlendirme
+  // AI'a "bunu yapamazsın" değil "bunun yerine şunu dene" der
+  redirect?: string;
+}
+
+type PolicyFn = (decision: Decision) => PolicyResult | null;
+
+interface PolicyRegistry {
+  register(name: string, fn: PolicyFn, priority: 1|2|3|4): void;
+  evaluate(decision: Decision): PolicyResult;
+}
+```
+
+### 5.3 Evrensel Hard Lock Kuralları
+
+Bu kurallar her projede geçerlidir, domain bilgisi içermez:
+
+```typescript
+// core/policy/hard-locks.ts
+
+// HARD LOCK 1: Değiştirilemez durum koruması
+// "locked_states" listesi domain adaptörü tarafından sağlanır
+const immutableStateGuard: PolicyFn = (d) => {
+  const lockedStates = DomainConfig.getLockedStates(d.category);
+  const currentState = d.payload.params.current_status as string;
+
+  if (lockedStates.includes(currentState) && d.intent !== "READ_DATA") {
+    return {
+      decision: "DENY",
+      priority: 1,
+      error_code: "IMMUTABLE_STATE",
+      redirect: `"${currentState}" durumundaki kayıt değiştirilemez. Yalnızca okuma yapılabilir.`
+    };
+  }
+  return null;
+};
+
+// HARD LOCK 2: Negatif/sıfır sayısal değer
+// Hangi alanların negatif olamayacağını domain tanımlar
+const nonNegativeGuard: PolicyFn = (d) => {
+  const criticalFields = DomainConfig.getNonNegativeFields(d.category);
+  for (const field of criticalFields) {
+    const value = d.payload.params[field] as number;
+    if (value !== undefined && value <= 0) {
+      return {
+        decision: "DENY",
+        priority: 1,
+        error_code: "NON_POSITIVE_VALUE",
+        redirect: `"${field}" alanı sıfır veya negatif olamaz. Geçerli bir değer girin.`
+      };
+    }
+  }
+  return null;
+};
+
+// HARD LOCK 3: CRITICAL risk → insan onayı zorunlu
+const criticalHumanGate: PolicyFn = (d) => {
+  if (d.context.risk_level === "CRITICAL") {
+    return {
+      decision: "ASK_HUMAN",
+      priority: 1,
+      error_code: "HUMAN_APPROVAL_REQUIRED",
+      redirect: "Bu işlem kritik risk seviyesinde. Dashboard üzerinden manuel onay gerekiyor."
+    };
+  }
+  return null;
+};
+
+// HARD LOCK 4: Kaynak sahibi değilse READ_DATA dışında yasak
+const ownershipGuard: PolicyFn = (d) => {
+  if (d.intent === "READ_DATA") return null;
+  const resourceOwner = d.payload.params.owner_id as string;
+  if (resourceOwner && resourceOwner !== d.context.actor_id) {
+    const actorRole = d.context.actor_role;
+    const privilegedRoles = DomainConfig.getPrivilegedRoles();
+    if (!privilegedRoles.includes(actorRole)) {
+      return {
+        decision: "DENY",
+        priority: 1,
+        error_code: "NOT_RESOURCE_OWNER",
+        redirect: "Bu kaynağa erişim yetkiniz yok."
+      };
+    }
+  }
+  return null;
+};
+```
+
+### 5.4 Domain Politika Şablonu
+
+Kullanıcı her proje için bu şablonu doldurur:
+
+```typescript
+// domain/[proje]/policies.ts
+
+import { registerPolicy } from "../../core/policy/registry";
+
+// POLİTİKA 1: Rol tabanlı eylem kısıtlaması
+registerPolicy("role_action_guard", (d) => {
+  const allowedRoles = ROLE_ACTION_MAP[d.payload.action_name];
+  if (!allowedRoles) return null; // bu eylem için kısıt yok
+
+  if (!allowedRoles.includes(d.context.actor_role)) {
+    return {
+      decision: "DENY",
+      priority: 2,
+      error_code: "UNAUTHORIZED_ROLE",
+      redirect: `Bu eylemi "${allowedRoles.join(", ")}" rolü yapabilir. Sizin rolünüz: ${d.context.actor_role}`
+    };
+  }
+  return null;
+}, 2);
+
+// POLİTİKA 2: Hiyerarşi yönü kısıtlaması (varsa)
+registerPolicy("hierarchy_direction_guard", (d) => {
+  if (!d.context.hierarchy_path) return null;
+  const direction = d.payload.params.direction as string;
+  const allowedDirection = DomainConfig.getAllowedHierarchyDirection(d.payload.action_name);
+
+  if (allowedDirection && direction !== allowedDirection) {
+    return {
+      decision: "DENY",
+      priority: 2,
+      error_code: "INVALID_HIERARCHY_DIRECTION",
+      redirect: `Bu işlem yalnızca ${allowedDirection} yönünde çalışır.`
+    };
+  }
+  return null;
+}, 2);
+
+// POLİTİKA 3: Nümerik limit kontrolü
+registerPolicy("numeric_limit_guard", (d) => {
+  const limits = DomainConfig.getFieldLimits(d.category, d.payload.action_name);
+  for (const [field, { min, max }] of Object.entries(limits)) {
+    const value = d.payload.params[field] as number;
+    if (value === undefined) continue;
+    if (min !== undefined && value < min) {
+      return {
+        decision: "DENY",
+        priority: 3,
+        error_code: "BELOW_MINIMUM",
+        redirect: `"${field}" değeri minimum ${min} olmalıdır. Girilen: ${value}`
+      };
+    }
+    if (max !== undefined && value > max) {
+      return {
+        decision: "DENY",
+        priority: 3,
+        error_code: "EXCEEDS_MAXIMUM",
+        redirect: `"${field}" değeri maksimum ${max} olabilir. Girilen: ${value}`
+      };
+    }
+  }
+  return null;
+}, 3);
+
+// POLİTİKA 4: Operasyonel pencere kontrolü (bakım modü vs.)
+registerPolicy("operational_window_guard", (d) => {
+  const maintenanceMode = SystemState.isMaintenanceMode();
+  const exemptIntents: Intent[] = ["READ_DATA"];
+
+  if (maintenanceMode && !exemptIntents.includes(d.intent)) {
+    return {
+      decision: "DENY",
+      priority: 3,
+      error_code: "MAINTENANCE_WINDOW_ACTIVE",
+      redirect: "Sistem bakım modunda. Yalnızca okuma işlemleri yapılabilir."
+    };
+  }
+  return null;
+}, 3);
+
+// Domain konfigürasyonu — kullanıcı bu nesneyi proje başında tanımlar
+const ROLE_ACTION_MAP: Record<string, string[]> = {
+  // "action_name": ["izinli_rol_1", "izinli_rol_2"]
+  // Örnek:
+  // "create_order":    ["customer", "admin"],
+  // "approve_refund":  ["admin", "supervisor"],
+  // "delete_account":  ["admin"],
+};
+```
+
+### 5.5 Soft Steering Felsefesi
+
+```
+YANLIŞ YAKLAŞIM: "DENIED"
+DOĞRU YAKLAŞIM:  "DENIED — Bunun yerine [X] kullanabilirsiniz"
+
+Neden önemli:
+  DENIED → AI aynı isteği farklı şekilde tekrar dener
+  DENIED + redirect → AI alternatif yola yönelir
+
+Üç mesaj katmanı:
+  technical_code:   "UNAUTHORIZED_ROLE"          ← Rust Core / debug
+  developer_steer:  "Admin rolü gerekli"          ← AI / geliştirici
+  user_message:     "Bu işlem için yetkiniz yok"  ← Son kullanıcı
+```
+
+---
+
+## BÖLÜM 6 — EXECUTION GATE
+
+### 6.1 Idempotency — Mükerrer İşlem Engeli
+
+```typescript
+// core/gate/idempotency.ts
+
+// Idempotency key üretim formülü
+// 5 saniyelik zaman penceresi: aynı anahtar → önceki sonucu döndür
+function generateKey(decision: Decision): string {
+  const window = Math.floor(Date.now() / 5000);
+  const payload = JSON.stringify({
+    actor: decision.context.actor_id,
+    action: decision.payload.action_name,
+    params: decision.payload.params,
+    window
+  });
+  return crypto.createHash("sha256").update(payload).digest("hex");
+}
+
+class IdempotencyStore {
+  private store = new Map<string, { result: unknown; timestamp: number }>();
+  private TTL_MS = 30_000; // 30 saniye cache
+
+  async check(key: string): Promise<{ found: boolean; cached?: unknown }> {
+    const entry = this.store.get(key);
+    if (!entry) return { found: false };
+    if (Date.now() - entry.timestamp > this.TTL_MS) {
+      this.store.delete(key);
+      return { found: false };
+    }
+    return { found: true, cached: entry.result };
+  }
+
+  async set(key: string, result: unknown): Promise<void> {
+    this.store.set(key, { result, timestamp: Date.now() });
+  }
+}
+
+// Yüksek yük senaryoları için Redis implementasyonu:
+// class RedisIdempotencyStore implements IdempotencyStore { ... }
+```
+
+### 6.2 Fail-Closed Garantisi
+
+```typescript
+// core/gate/fail-closed.ts
+
+// SİSTEMİN EN KRİTİK KURALI:
+// Şüpheli durumda varsayılan karar her zaman DENY
+
+const DENY_REASONS = [
+  "POLICY_TIMEOUT",
+  "POLICY_SERVICE_UNAVAILABLE",
+  "UNKNOWN_INTENT",
+  "SIGNATURE_INVALID",
+  "LICENSE_EXPIRED",
+  "UNKNOWN_ERROR"
+] as const;
+
+async function executeWithFailClosed<T>(
+  operation: () => Promise<T>,
+  timeoutMs: number = 5000
+): Promise<T | never> {
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("POLICY_TIMEOUT")), timeoutMs)
+  );
+
+  try {
+    return await Promise.race([operation(), timeoutPromise]);
+  } catch (err) {
+    // Herhangi bir hata → DENY, asla izin ver değil
+    const reason = DENY_REASONS.find(r =>
+      String(err).includes(r)
+    ) ?? "UNKNOWN_ERROR";
+
+    throw new PolicyDeniedError(reason);
+  }
+}
+```
+
+### 6.3 Atomic File Transaction (The Bridge için)
+
+```typescript
+// core/gate/atomic-transaction.ts
+
+interface FileOperation {
+  operation: "CREATE" | "UPDATE" | "DELETE";
+  path: string;
+  content?: string;
+}
+
+async function executeAtomically(
+  bundleId: string,
+  operations: FileOperation[]
+): Promise<{ success: boolean; rolled_back?: boolean }> {
+
+  // 1. Yedek al
+  const backups = new Map<string, string | null>();
+  for (const op of operations) {
+    if (op.operation !== "CREATE") {
+      const existing = await readFileSafe(op.path);
+      backups.set(op.path, existing);
+    }
+  }
+
+  // 2. Checkpoint oluştur
+  const checkpoint = {
+    bundle_id: bundleId,
+    started_at: Date.now(),
+    completed: [] as string[],
+    status: "IN_PROGRESS" as string
+  };
+  await writeCheckpoint(bundleId, checkpoint);
+
+  // 3. İşlemleri uygula
+  try {
+    for (const op of operations) {
+      await applyOperation(op);
+      checkpoint.completed.push(op.path);
+      await writeCheckpoint(bundleId, checkpoint);
+    }
+    checkpoint.status = "COMPLETED";
+    await writeCheckpoint(bundleId, checkpoint);
+    return { success: true };
+
+  } catch (err) {
+    // 4. Rollback
+    for (const [path, backup] of backups) {
+      if (backup !== null) await writeFile(path, backup);
+      else await deleteFileSafe(path);
+    }
+    checkpoint.status = "ROLLED_BACK";
+    await writeCheckpoint(bundleId, checkpoint);
+    return { success: false, rolled_back: true };
+  }
+}
+```
+
+### 6.4 Hata Senaryosu Tablosu
+
+| Senaryo | Risk | Yanıt |
+|---------|------|-------|
+| Aynı istek 2 kez | Mükerrer işlem | Idempotency → önceki sonucu döndür |
+| Bayat veri tespiti | Yanlış kararlar | Pre-flight → RE_EVALUATE sinyali |
+| Politika timeout | Belirsiz durum | Fail-closed → DENY |
+| Bridge kısmen çalıştı | Tutarsız dosyalar | Atomic rollback |
+| Değiştirilemez kayıt | Veri bozulması | IMMUTABLE_STATE → DENY |
+| Bilinmeyen intent | Bypass girişimi | Default DENY |
+
+---
+
+# KISIM III — DOMAIN ADAPTASYONU
+
+---
+
+## BÖLÜM 7 — DOMAIN ADAPTER
+
+### 7.1 Evrensel Adapter Arayüzü
+
+```typescript
+// core/adapter/types.ts
+
+interface AdapterResult {
+  success: boolean;
+  data?: unknown;
+  error?: string;
+  error_code?: string;
+}
+
+interface DomainAdapter {
+  // Hangi karar nesnelerini işleyebileceğini söyler
+  supports(decision: Decision): boolean;
+
+  // Onaylanan kararı gerçek sisteme taşır
+  // Tüm domain bilgisi burada toplanır
+  execute(decision: Decision): Promise<AdapterResult>;
+
+  // Pre-flight okuma (opsiyonel — override edilebilir)
+  preFlightReader?: PreFlightReader;
+}
+
+class AdapterRegistry {
+  private adapters: DomainAdapter[] = [];
+
+  register(adapter: DomainAdapter): void {
+    this.adapters.push(adapter);
+  }
+
+  resolve(decision: Decision): DomainAdapter {
+    const adapter = this.adapters.find(a => a.supports(decision));
+    if (!adapter) {
+      throw new Error(
+        `No adapter found for: intent=${decision.intent}, category=${decision.category}`
+      );
+    }
+    return adapter;
+  }
+}
+```
+
+### 7.2 Adapter Şablonu
+
+Her yeni proje için kopyalanır ve doldurulur:
+
+```typescript
+// domain/[PROJE_ADI]/adapter.ts
+
+import { DomainAdapter, Decision, AdapterResult } from "../../core/adapter/types";
+
+// [PROJE_ADI] için domain kategorileri
+// Örnek:
+//   E-ticaret:   "ORDER", "INVENTORY", "PAYMENT", "CUSTOMER"
+//   Sağlık:      "APPOINTMENT", "PRESCRIPTION", "PATIENT", "BILLING"
+//   Lojistik:    "SHIPMENT", "ROUTE", "WAREHOUSE", "VEHICLE"
+//   Eğitim:      "ENROLLMENT", "COURSE", "GRADE", "SCHEDULE"
+const SUPPORTED_CATEGORIES = ["CATEGORY_A", "CATEGORY_B"] as const;
+
+export class [ProjeAdi]Adapter implements DomainAdapter {
+
+  constructor(private db: DatabaseClient) {}
+
+  supports(decision: Decision): boolean {
+    return SUPPORTED_CATEGORIES.includes(
+      decision.category as typeof SUPPORTED_CATEGORIES[number]
+    );
+  }
+
+  async execute(decision: Decision): Promise<AdapterResult> {
+    try {
+      const result = await this.dispatch(decision);
+      return { success: true, data: result };
+    } catch (err) {
+      return {
+        success: false,
+        error: String(err),
+        error_code: this.classifyError(err)
+      };
+    }
+  }
+
+  private async dispatch(decision: Decision): Promise<unknown> {
+    switch (decision.payload.action_name) {
+      case "action_one":   return this.actionOne(decision.payload.params);
+      case "action_two":   return this.actionTwo(decision.payload.params);
+      // ... tüm domain aksiyonları
+      default:
+        throw new Error(`Unknown action: ${decision.payload.action_name}`);
+    }
+  }
+
+  private async actionOne(params: Record<string, unknown>): Promise<unknown> {
+    // Gerçek DB/API çağrısı buraya
+    throw new Error("Not implemented");
+  }
+
+  private async actionTwo(params: Record<string, unknown>): Promise<unknown> {
+    throw new Error("Not implemented");
+  }
+
+  private classifyError(err: unknown): string {
+    // Hata sınıflandırma — domain-spesifik
+    return "EXECUTION_ERROR";
+  }
+}
+```
+
+### 7.3 Beş Farklı Domain İçin Eşleştirme
+
+Sistemin esnekliğini göstermek için:
+
+```
+E-TİCARET:
+  categories:   ORDER, INVENTORY, PAYMENT, RETURN, CUSTOMER
+  actions:      create_order, cancel_order, process_payment,
+                update_inventory, initiate_return
+  locked_states: completed, refunded, shipped
+  critical_fields: amount, quantity
+
+SAĞLIK:
+  categories:   APPOINTMENT, PRESCRIPTION, PATIENT, BILLING
+  actions:      book_appointment, cancel_appointment,
+                issue_prescription, update_diagnosis
+  locked_states: completed, dispensed, deceased
+  critical_fields: dosage, appointment_time
+
+LOJİSTİK:
+  categories:   SHIPMENT, ROUTE, VEHICLE, WAREHOUSE
+  actions:      create_shipment, assign_driver,
+                update_route, mark_delivered
+  locked_states: delivered, returned, lost
+  critical_fields: weight, destination_address
+
+EĞİTİM:
+  categories:   ENROLLMENT, COURSE, GRADE, SCHEDULE
+  actions:      enroll_student, assign_grade,
+                update_schedule, issue_certificate
+  locked_states: graduated, expelled, certified
+  critical_fields: grade_value, enrollment_date
+
+İNSAN KAYNAKLARI:
+  categories:   EMPLOYEE, PAYROLL, LEAVE, PERFORMANCE
+  actions:      hire_employee, process_payroll,
+                approve_leave, submit_review
+  locked_states: terminated, paid, approved
+  critical_fields: salary, leave_days
+```
+
+### 7.4 DomainConfig Arayüzü
+
+```typescript
+// domain/[proje]/config.ts
+
+export const DomainConfig = {
+  // Hangi durumlar değiştirilemez?
+  getLockedStates(category: string): string[] {
+    return LOCKED_STATES[category] ?? [];
+  },
+
+  // Hangi alanlar negatif olamaz?
+  getNonNegativeFields(category: string): string[] {
+    return NON_NEGATIVE_FIELDS[category] ?? [];
+  },
+
+  // Hangi roller ayrıcalıklı? (ownership check geçer)
+  getPrivilegedRoles(): string[] {
+    return ["admin", "super_admin"];
+  },
+
+  // Alan limitleri
+  getFieldLimits(
+    category: string,
+    action: string
+  ): Record<string, { min?: number; max?: number }> {
+    return FIELD_LIMITS[`${category}:${action}`] ?? {};
+  },
+
+  // Hiyerarşi yönü kısıtı varsa
+  getAllowedHierarchyDirection(action: string): string | null {
+    return HIERARCHY_DIRECTIONS[action] ?? null;
+  }
+};
+
+// Bu nesneler proje başında doldurulur:
+const LOCKED_STATES: Record<string, string[]> = {
+  // "CATEGORY": ["locked_state_1", "locked_state_2"]
+};
+
+const NON_NEGATIVE_FIELDS: Record<string, string[]> = {
+  // "CATEGORY": ["field_name_1", "field_name_2"]
+};
+
+const FIELD_LIMITS: Record<string, Record<string, { min?: number; max?: number }>> = {
+  // "CATEGORY:action": { "field": { min: 0, max: 1000 } }
+};
+
+const HIERARCHY_DIRECTIONS: Record<string, string> = {
+  // "action_name": "parent_to_child" | "child_to_parent"
+};
+```
+
+---
+
+# KISIM IV — İŞLETİM
+
+---
+
+## BÖLÜM 8 — SESSION PROTOKOLÜ
+
+### 8.1 Hafıza Mimarisi (Büyüyen Log Sorunu)
+
+Session log sınırsız büyürse sistem kendi hafızasını okuyamaz hale gelir.
+
+```
+HOT  (session_log_hot.md)      ← Her session başında okunur
+     Son 5 session
+     Max ~300 satır
+
+WARM (session_log_warm/[yil]-[ay].md)  ← Talep üzerine
+     Aylık arşiv
+     "Geçen ay X modülünü yaptık, şimdi Y'yi yapacağız" gibi
+
+COLD (session_log_cold.md)     ← Talep üzerine
+     Tüm geçmişin 150 satırlık özeti
+     Her 50 session'da AI tarafından sıkıştırılır
+
+KURAL:
+  5. session → hot'taki en eski session warm'a taşınır
+  50. session → tüm warm arşivinden cold özet üretilir
+```
+
+### 8.2 Session Açılış Sırası
+
+```
+1. SOVEREIGN_ENGINE_OS.md  → sistemi anla (ilk session)
+2. CORE.md                 → proje kimliğini anla
+3. session_index.md        → anlık durumu anla
+4. session_log_hot.md      → son 5 session'ı anla
+5. Sağlık kontrolü yap:
+
+   "Sağlık: ⚠️ [N] açık sorun — [liste]
+    Devam edelim mi?"
+
+   veya
+
+   "Sağlık: ✅ Temiz. Sıradaki: [görev]"
+
+6. Görev netleşince → CORE.md'den ilgili dosyaları belirle
+7. MAX 3 dosya iste (context window ekonomisi)
+8. Eksik veriyle asla HIGH confidence verme
+```
+
+### 8.3 Confidence Protokolü
+
+| Seviye | Koşul |
+|--------|-------|
+| HIGH | Self-check tümü temiz + gerekli tüm dosyalar okundu + failure_patterns kontrol edildi |
+| MEDIUM | Bir belirsizlik var VEYA tam context sağlanmadı |
+| LOW | Kritik dosya eksik VEYA domain bilinmiyor |
+
+### 8.4 Output Formatı
+
+Her çözüm şu sırayla:
+
+```
+[KARAR BİLDİRİMİ]        ← kısa JSON / key-value
+[KOD]                     ← tam dosya, truncated yasak
+[RİSK ANALİZİ]            ← failure_patterns'tan tetiklenebilecekler
+[CONFIDENCE: X — gerekçe] ← net seviye + neden
+[TEST KOŞULU]             ← test_matrix'e eklenecek senaryo
+```
+
+### 8.5 Session Kapanış Protokolü
+
+Her görev sonrası ZORUNLU, atlanamaz:
+
+```
+1. session_index.md    → tam dosya güncelle
+2. session_log_hot.md  → yeni blok ekle (kullanıcı onaylar)
+3. test_matrix.md      → yeni test senaryoları (tam dosya)
+4. DEPENDENCIES.md     → yeni bağımlılıklar (tam dosya)
+
+Onay sorusu:
+"4 dosyayı onaylıyor musun? (session_index / log_hot / test_matrix / dependencies)"
+```
+
+---
+
+## BÖLÜM 9 — YENİ PROJE BOOTSTRAP
+
+### 9.1 Üç Adım, İki Gün
+
+```
+GÜN 1 — SABAH (2 saat): Temel Kurulum
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  sovereign-core init     → parmak izi al
+  Sahipten lisans al      → sovereign-core activate LICENSE.sig
+  Şablon kopyala          → cp -r se-template/ [proje]-os/
+  CORE.md doldur          → proje adı, stack, roller, kategoriler
+  DomainConfig doldur     → locked_states, limits, roles
+  AI'ya boot komutu ver   → sağlık kontrolü beklenir
+
+GÜN 1 — ÖĞLEDEN SONRA (3 saat): FAZ 0 Başlangıcı
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  AI ile veri modeli tasarımı
+  İlk ARCHITECTURE.md taslağı
+  İlk migration dosyası → YYYYMMDDHHMMSS_init.sql
+  İlk session kapanışı → 4 dosya güncellenir
+
+GÜN 2 — SABAH (3 saat): FAZ 1 Başlangıcı
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  DomainAdapter.ts yazılır (ilk action)
+  İlk Decision Object üretilir
+  İlk politika testi
+  İlk The Bridge çalışması
+```
+
+**Gün 2 sonu doğrulama kriterleri:**
+```
+✅ sovereign-core status → GEÇERLİ
+✅ session_log_hot.md   → en az 2 session
+✅ MIGRATIONS/          → en az 1 dosya
+✅ test_matrix.md       → en az 3 senaryo
+✅ Decision nesne       → en az 1 başarılı ALLOW
+```
+
+### 9.2 CORE.md Şablonu (Yeni Proje)
+
+```markdown
+# [PROJE ADI] — CORE
+
+## Kimlik
+Proje: [AD]
+Versiyon: v1.0
+Stack: [frontend] + [backend] + [DB]
+
+## Roller (Hiyerarşi sırası)
+1. [en üst rol]    → [açıklama]
+2. [ikinci rol]    → [açıklama]
+3. [kullanıcı rol] → [açıklama]
+
+## Domain Kategorileri
+[KATEGORİ_A]: [açıklama]
+[KATEGORİ_B]: [açıklama]
+
+## Kritik Kurallar
+- [Domain-spesifik kural 1]
+- [Domain-spesifik kural 2]
+- [Domain-spesifik kural 3]
+
+## Platform Notları
+- Deploy: [platform + plan]
+- Timeout sınırı: [değer]
+- Env variables: [liste]
+
+## AI Session Protokolü
+[Standart Sovereign Engine protokolü geçerli]
+```
+
+### 9.3 failure_patterns.md Başlangıç Şablonu
+
+Her proje şu 5 evrensel pattern ile başlar, domain-özellerini ekler:
+
+```markdown
+# [PROJE ADI] — FAILURE PATTERNS
+
+## EVRENSEL PATTERNLAR (Her projede geçerli)
+
+### FP-U1: DOUBLE EXECUTION
+Tetikleyici: Kullanıcı kritik butona hızlıca iki kez basar
+Önlem: isSubmitting guard (UI) + idempotency_key (DB/server)
+
+### FP-U2: RACE CONDITION
+Tetikleyici: İki eş zamanlı istek aynı kayıtla çalışır
+Önlem: DB seviyesinde kilitleme (row-level lock)
+
+### FP-U3: PARSİYEL BAŞARISIZLIK
+Tetikleyici: Transaction'ın bir parçası başarısız
+Önlem: Atomik transaction — ya hepsi ya hiçbiri
+
+### FP-U4: IMMUTABLE STATE
+Tetikleyici: Tamamlanmış/kilitli kayda yazma girişimi
+Önlem: DomainConfig.getLockedStates() + policy guard
+
+### FP-U5: STALE DATA
+Tetikleyici: AI eski veriyle karar verir, sistem değişmiştir
+Önlem: Pre-flight Read + RE_EVALUATE sinyali
+
+## DOMAIN-SPESİFİK PATTERNLAR
+[Yeni hatalar keşfedildikçe buraya eklenir]
+```
+
+---
+
+# KISIM V — RUST ÇEKİRDEĞİ
+
+---
+
+## BÖLÜM 10 — SOVEREIGN CORE MİMARİSİ
+
+### 10.1 Neden Rust, Neden Binary
+
+| Gereksinim | Rust'un Sağladığı |
+|------------|------------------|
+| Kopyalanamaz çekirdek | Donanım parmak izi + imzalı binary |
+| Finansal güvenlik | Sıfır GC durması, memory safety |
+| Çoklu platform | Node.js (napi-rs), Python (PyO3), WASM |
+| Değiştirilemez log | `sha2` ile hash chain |
+| Yüksek throughput | Tokio async — <1ms policy değerlendirme |
+| Güvenli güncelleme | ed25519 imzalı update paketi |
+
+### 10.2 Crate Mimarisi
+
+```
+sovereign-core/
+  ├── Cargo.toml
+  ├── build.rs                 ← Donanım parmak izi baking
+  │
+  ├── src/
+  │   ├── lib.rs               ← Public API (tek giriş noktası)
+  │   │
+  │   ├── kernel/
+  │   │   ├── policy.rs        ← Hard lock değerlendirme
+  │   │   ├── gate.rs          ← Idempotency + fail-closed
+  │   │   ├── audit.rs         ← Hash zincirli log
+  │   │   └── constitution.rs  ← AI anayasa kuralları
+  │   │
+  │   ├── license/
+  │   │   ├── fingerprint.rs   ← Donanım kimliği
+  │   │   └── verifier.rs      ← Lisans doğrulama
+  │   │
+  │   └── ffi/
+  │       ├── node.rs          ← napi-rs binding
+  │       └── wasm.rs          ← wasm-bindgen binding
+  │
+  └── tests/
+      ├── policy_tests.rs
+      └── audit_integrity_tests.rs
+```
+
+### 10.3 Public API (Tek Giriş Noktası)
+
+```rust
+// src/lib.rs — Kullanıcının gördüğü tek arayüz
+
+/// Tek public fonksiyon.
+/// İçinde ne olduğu gizli; dışarıdan sadece bu çağrılır.
+///
+/// Girdi: JSON string (Decision nesnesi)
+/// Çıktı: JSON string (GateResult)
+///
+/// GateResult: {
+///   status: "PERMIT" | "BLOCK" | "DUPLICATE" | "ASK_HUMAN",
+///   receipt?: string,        // PERMIT ise imzalı fiş
+///   soft_steer?: string,     // BLOCK ise AI yönlendirmesi
+///   error_code?: string,
+///   current_snapshot?: object // RE_EVALUATE ise güncel veri
+/// }
+pub fn evaluate(decision_json: &str) -> String {
+    // 1. Lisans doğrula
+    // 2. Decision parse et
+    // 3. Hard lock'ları kontrol et
+    // 4. Execution gate'i çalıştır
+    // 5. AuditChain'e kaydet
+    // 6. Sonucu JSON olarak döndür
+    todo!("Kaynak gizli — sadece binary dağıtım")
+}
+```
+
+### 10.4 AuditChain — Değiştirilemez Log
+
+```rust
+// Tasarım planı — kaynak gizli
+
+/// Her kayıt önceki kaydın hash'ini içerir.
+/// Geriye dönük değişiklik teknik olarak imkansız.
+pub struct AuditEntry {
+    id: String,
+    timestamp: i64,
+    decision_id: String,
+    intent: String,
+    category: String,
+    policy_result: String,   // "ALLOW" | "DENY:KOD"
+    gate_result: String,     // "PERMIT" | "BLOCK"
+    prev_hash: String,       // Önceki kaydın hash'i
+    entry_hash: String,      // Bu kaydın hash'i
+    signature: String,       // ed25519 imzası
+}
+
+/// Beş katmanlı karar izi
+pub struct DecisionTrace {
+    trigger: String,                      // 1. Ne tetikledi?
+    context_snapshot: String,             // 2. Karar anında bağlam
+    reasoning: Vec<String>,               // 3. AI'nın düşünce zinciri
+    alternatives: Vec<String>,            // 4. Değerlendirilen alternatifler
+    authority: String,                    // 5. Kim izin verdi?
+}
+```
+
+### 10.5 Lisans ve Güncelleme Akışı
+
+```
+KURULUM (Day 0):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  $ sovereign-core init
+  → Parmak izi üretilir: a3f8b2c1...
+  → "Bu kodu sahibe gönderin"
+
+  Sahip:
+  $ sovereign-license issue --fp a3f8b2c1 --exp 2027-01-01
+  → LICENSE.sig üretilir ve gönderilir
+
+  $ sovereign-core activate LICENSE.sig
+  → "Lisans doğrulandı. Sistem aktif."
+
+  $ sovereign-core status
+  → Lisans: GEÇERLİ | Donanım: BAĞLI | Versiyon: v1.0.0
+
+GÜNCELLEME:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Sahip yeni kural yazar → ed25519 ile imzalar
+  → update.manifest yayınlanır
+
+  $ sovereign-core update
+  → Manifest kontrol edilir
+  → İmza doğrulanır (public key hard-coded)
+  → Donanım parmak izi doğrulanır
+  → Binary güncellenir
+
+FELAKET KURTARMA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Donanım arızalandığında:
+  1. Sahibi bildir (eski fingerprint kaydı)
+  2. 24 saat içinde emergency lisans
+  3. Yeni donanımda aktive et
+
+  Önlem: Haftalık
+  $ sovereign-core backup-config → fingerprint + lisans yedeklenir
+```
+
+---
+
+# KISIM VI — KONTROL ARAYÜZİ
+
+---
+
+## BÖLÜM 11 — SOVEREIGN DASHBOARD
+
+### 11.1 Teknoloji
+
+```
+Framework:  Tauri (desktop) / Vite+React (web)
+UI:         Tailwind CSS + shadcn/ui
+State:      Zustand
+Realtime:   WebSocket / SSE (Core'dan event stream)
+Rust bağlantısı: Tauri commands
+```
+
+### 11.2 Beş Ekran
+
+**Ekran 1 — Mission Control (Ana Panel)**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  SOVEREIGN ENGINE                    v3.0  ●  AKTİF    │
+├───────────┬───────────┬──────────────┬──────────────────┤
+│ KARARLAR  │ POLİTİKA  │   SESSION    │    SİSTEM        │
+│ Son 1 saat│ İhlaller  │   Durum      │    Sağlık        │
+│   ████ 89 │   ▓ 2     │   #47 aktif  │   ✅ Temiz       │
+├───────────┴───────────┴──────────────┴──────────────────┤
+│  CANLI KARAR AKIŞI                        [⏸ Duraklat] │
+│  ──────────────────────────────────────────────────     │
+│  14:22:01  [CATEGORY_A] create_X  PERMIT  actor_123 ✅  │
+│  14:22:00  [CATEGORY_B] read_Y    PERMIT  actor_456 ✅  │
+│  14:21:59  [CATEGORY_A] update_Z  BLOCK   actor_789 ❌  │
+│            └─ UNAUTHORIZED_ROLE                         │
+│            └─ "Admin rolü gerekli. Sizin rolünüz: user" │
+│  14:21:58  [CATEGORY_C] delete_W  ASK_HUMAN  actor_1 🔔 │
+│  ──────────────────────────────────────────────────     │
+├─────────────────────────────────────────────────────────┤
+│  PERMIT: 95.5%  BLOCK: 4.1%  HUMAN: 0.4%              │
+│  AI Uyum: 97.2%  Token: 8,420  Uptime: 12s 4m          │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Ekran 2 — Karar Gezgini**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  KARAR GEZGİNİ               [Filtrele▼] [Dışa Aktar]  │
+├─────────────────────────────────────────────────────────┤
+│  ◉ dec_a1b2  EXECUTE_ACTION/CATEGORY_A  14:22:01  ✅   │
+│  ├─ Validasyon: ✅ Şema  ✅ İş kuralı  ✅ Bağlam       │
+│  ├─ Politika:  ✅ ALLOW — 3 kural geçti                │
+│  ├─ Gate:      ✅ PERMIT — yeni idempotency key         │
+│  ├─ Adapter:   ✅ Başarılı → 201 OK                    │
+│  └─ Receipt:   f7a3b9c2... [Doğrula]                   │
+│                                                         │
+│  ◉ dec_c3d4  EXECUTE_ACTION/CATEGORY_A  14:21:59  ❌   │
+│  ├─ Politika:  ❌ UNAUTHORIZED_ROLE (P2)               │
+│  ├─ Steer:     "Admin rolü gerekli"                    │
+│  └─ AI tepkisi: RE_EVALUATED → alternatif yol seçildi  │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Ekran 3 — Politika Editörü**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  POLİTİKA EDİTÖRÜ         Core: v1.0  Domain: v0.3     │
+├──────────────────────┬──────────────────────────────────┤
+│  🔒 Hard Locks (4)   │  Kural: role_action_guard        │
+│    immutable_state   │  Tür:   DOMAIN (düzenlenebilir)  │
+│    non_negative      │  ──────────────────────────────  │
+│    critical_human    │  Eylem: DENY (Öncelik: 2)        │
+│    ownership_check   │  Kod:   UNAUTHORIZED_ROLE        │
+│                      │  ──────────────────────────────  │
+│  ✏️ Domain (6)       │  İzinli roller:                  │
+│    role_action ◀    │  [admin, supervisor__________]   │
+│    hierarchy_dir     │                                  │
+│    numeric_limit     │  Yönlendirme mesajı:             │
+│    operational_win   │  [Bu eylemi {roller} yapabilir.] │
+│    ...               │                                  │
+│  [+ Yeni Kural]      │  [Simüle Et]  [Kaydet]          │
+├──────────────────────┴──────────────────────────────────┤
+│  ⚠️ Hard Lock kuralları değiştirilemez.                 │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Ekran 4 — Session Yöneticisi**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  SESSION YÖNETİCİSİ              [Proje] v2.3 / #47    │
+├─────────────────────────────────────────────────────────┤
+│  AÇIK SORUNLAR                             [+ Ekle]    │
+│  🔴 #3  [Kritik açıklama]                              │
+│  🟠 #7  [Yüksek öncelikli açıklama]                    │
+│  🟡 #2  [Orta öncelikli açıklama]                      │
+│                                                         │
+│  HAFIZA DURUMU                                          │
+│  Hot:  5 session  (300 satır / max 300)  ✅            │
+│  Warm: 3 arşiv   (Oca, Şub, Mar 2026)                  │
+│  Cold: v2 özet   (50. session'da üretildi)             │
+│  [Arşivle]  [Cold Özet Üret]                           │
+│                                                         │
+│  SESSION KAPAT                                          │
+│  [session_index ✓] [log_hot ✓] [test_matrix ?]         │
+│  [dependencies ?]  [Hepsini Tamamla]  [Onayla]         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Ekran 5 — The Bridge**
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  THE BRIDGE                                    v0.2     │
+├─────────────────────────────────────────────────────────┤
+│  1. AI ÇIKTISINI YAPISTIR                              │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ { "bundle_id": "s47_t1",                         │  │
+│  │   "decision": {...},                             │  │
+│  │   "files": [...],                                │  │
+│  │   "migrations": [...] }                          │  │
+│  └──────────────────────────────────────────────────┘  │
+│                                                         │
+│  2. KONTROL                                            │
+│  ✅ JSON Geçerli                                        │
+│  ✅ Decision Object var                                 │
+│  ✅ PolicyKernel: ALLOW                                 │
+│  ✅ Rollback planı hazır (yedekler alındı)              │
+│                                                         │
+│  3. DEĞİŞİKLİKLER                                      │
+│  📄 src/adapter.ts      GÜNCELLEME  [Diff]             │
+│  🗄️ 20260430_add_col.sql  YENİ      [Önizle]           │
+│                                                         │
+│  4. UYGULA                                             │
+│  [Simüle Et]  [Uygula ▶]  [Git Push (onay sonrası)]   │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+# KISIM VII — TAHMİN MODELİ
+
+---
+
+## BÖLÜM 12 — PROJE TAHMİN ÇERÇEVESI
+
+### 12.1 Özellik Maliyeti Tablosu
+
+Bir üretim projesinden elde edilen kalibrasyon verisi:
+
+| Özellik Kategorisi | Session Aralığı |
+|--------------------|-----------------|
+| Auth sistemi (giriş + rol) | 8–15 |
+| Basit CRUD | 1–2 |
+| Kritik atomik işlem (transaction) | 3–6 |
+| Hiyerarşik yetki (4 seviye) | 5–10 |
+| Realtime özellik | 4–8 |
+| Harici API entegrasyonu | 5–10 |
+| Karmaşık UI (çok adımlı state) | 3–6 |
+| Veri modeli değişikliği | 1–2 |
+| Kritik bug fix | 1–3 |
+| Yönetim paneli | 12–18 |
+
+### 12.2 Proje Büyüklük Kategorileri
+
+```
+MİKRO  (< 20 session):
+  Sovereign Engine → OVERKILL
+  Standart boilerplate yeterli
+
+KÜÇÜK  (20–50 session):
+  Sovereign Engine → İDEAL başlangıç
+  Altyapı kurulum overhead'ini karşılar
+
+ORTA   (50–100 session):
+  Sovereign Engine → TAM KAPASİTE
+  Sistem disiplini olmadan kriz garantili
+
+BÜYÜK  (100–200 session):
+  Sovereign Engine → ZORUNLU
+  Rust core + tüm katmanlar aktif
+
+KURUMSAL (200+ session):
+  Sovereign Engine + mikroservis adaptasyonu
+  Çok-tenant, compliance gereksinimler
+```
+
+### 12.3 Tahmin Formülü
+
+```
+TOPLAM = (FAZ_0 + FAZ_1 + FAZ_2) × KATSAYI
+
+FAZ_0 Altyapı:      10–50 session  (proje büyüklüğüne göre)
+FAZ_1 Core Domain:  15–65 session
+FAZ_2 Gelişmiş:     10–50 session
+
+KATSAYI (Gecikme faktörü):
+  Yeni domain + yeni stack:      1.45
+  Kısmen bilinen domain:         1.30
+  Sovereign Engine ile:          1.12  ← ~%15 iyileşme
+```
+
+### 12.4 Hızlı Tahmin
+
+```
+Şu soruları yanıtla ve topla:
+
+[ ] Kaç kritik atomik işlem? × 4.5 session
+[ ] Kaç CRUD endpoint?        × 1.5 session
+[ ] Realtime gerekli?         + 20 session
+[ ] Harici API?               × 7 session (her API)
+[ ] Kaç rol seviyesi?         × 5 session
+[ ] Admin/yönetim paneli?     + 15 session
+[ ] Ödeme/finansal işlem?     + 10 session (ek güvenlik)
+
+Toplam × 1.12 (Sovereign Engine) = Tahmini session
+```
+
+### 12.5 Kritik Gecikme Kaynakları
+
+Her proje başında kontrol edilmeli:
+
+| Risk | Erken Tespit | Maliyet |
+|------|--------------|---------|
+| Platform timeout limiti | FAZ 0'da basit endpoint + zaman ölçümü | +3 session |
+| Eksik env variable | `.env.example` listesi tam doldurulmalı | +2–5 session |
+| Bayat dokümantasyon | ARCHITECTURE.md her session kapanışında güncellenir | +1–3 session |
+| Keşfedilmemiş race condition | failure_patterns.md FAZ 1 öncesinde okunmalı | +3–8 session |
+| Veri modeli değişikliği | Migration numaralandırma + sıralı çalıştırma | +2 session |
+
+---
+
+## EKLER
+
+### A. Kesinlikle Yapılacaklar
+
+```
+✅ Kritik işlemler → atomik transaction
+✅ Eş zamanlı yazma riski → kilitleme mekanizması
+✅ Mükerrer istek riski → idempotency_key
+✅ Platform limitini FAZ 0'da test et
+✅ Env variable listesini proje başında tamamla
+✅ Migration → önce dosya, sonra çalıştır
+✅ ARCHITECTURE.md → her veri modeli değişikliğinde güncelle
+✅ test_matrix → her özellik için senaryo olmadan deploy yapılmaz
+✅ session_log → her görevde yaz
+✅ failure_patterns → her yeni hata kalıbı belgelenir
+```
+
+### B. Kesinlikle Yapılmayacaklar
+
+```
+❌ Kullanıcıdan gelen değeri doğrulama olmadan sisteme iletme
+❌ Kilitli/tamamlanmış kayıtlara yazma
+❌ Tüm sistemi tek session'da yükleme
+❌ Eksik context ile HIGH confidence verme
+❌ Onaysız kod değişikliği
+❌ Truncated çıktı (her zaman tam dosya)
+❌ Birden fazla sorunu aynı anda çözme
+❌ Test senaryosu olmadan production deploy
+❌ failure_patterns.md okumadan kritik işlem yazma
+```
+
+### C. Evrensel Terim Sözlüğü
+
+| Terim | Anlam |
+|-------|-------|
+| Decision | AI'nın ürettiği standart niyet nesnesi |
+| Intent | Eylemin türü (5 evrensel seçenek) |
+| Category | Domain'in tanımladığı iş alanı |
+| Hard Lock | Rust core'da gömülü, değiştirilemez kural |
+| Soft Steer | DENY yerine alternatif yönlendirme |
+| Pre-flight Read | Eylem öncesi gerçek durum kontrolü |
+| RE_EVALUATE | AI'ya "verin bayatlamış, yeniden değerlendir" sinyali |
+| Fail-Closed | Şüpheli durumda varsayılan DENY |
+| AuditChain | Hash zincirli değiştirilemez karar logu |
+| Domain Adapter | Core'u gerçek sisteme bağlayan tek katman |
+| The Bridge | AI çıktısını dosyaya uygulayan otomasyon arayüzü |
+
+### D. Versiyon Şeması
+
+```
+SOVEREIGN ENGINE vX.Y.Z
+  X → Büyük mimari değişiklik (Rust core)
+  Y → Yeni özellik (UI, adapter, protokol)
+  Z → Bug fix / kural güncellemesi
+
+PROJE VERSİYONU vFAZ.MİLESTONE
+  v1.0 → Faz 1, ilk milestone
+  v2.14 → Faz 2, 14. milestone
+```
+
+---
+
+*SOVEREIGN ENGINE OS v3.0*
+*Domain-agnostik · Rust çekirdeği · Evrensel AI Üretim Motoru*
+*Referans implementasyon: 1 üretim projesi, 125 session*
+*Versiyon: 3.0 — 2026-04-30*
